@@ -1,0 +1,90 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.env
+.env.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+nsfc.db
+
+# Uploads and Media
+backend/uploads/
+backend/pachong_demo/
+backend/__pycache__/
+backend/venv/
+uploads/
+*.pdf
+*.doc
+*.docx
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Frontend build
+frontend/dist/
+frontend/node_modules/
+
+# Python cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Backend specific
+backend/debug_*.html
+backend/api_success.json
+
+# Project specific
+项目清单.md
+项目总结.md
+debug_page.html
+TESTING.md
+
