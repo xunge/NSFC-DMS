@@ -114,7 +114,7 @@ def extract_project_info(url):
         edge_options.add_argument("--no-sandbox")
         
         # 使用用户指定的驱动路径
-        service = Service("./drivers/msedgedriver")
+        service = Service("../drivers/msedgedriver")
         driver = webdriver.Edge(service=service, options=edge_options)
         
         try:
