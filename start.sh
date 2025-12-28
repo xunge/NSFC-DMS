@@ -54,7 +54,7 @@ echo "启动服务..."
 echo "========================================="
 
 # 启动后端
-echo "🚀 启动后端服务 (端口: 5000)..."
+echo "🚀 启动后端服务 (端口: 5002)..."
 cd backend
 source venv/bin/activate
 python app.py &
@@ -66,7 +66,7 @@ echo "等待后端服务启动..."
 sleep 3
 
 # 检查后端是否正常启动
-if curl -s http://localhost:5000/api/health > /dev/null; then
+if curl -s http://localhost:5002/api/health > /dev/null; then
     echo "✅ 后端服务启动成功"
 else
     echo "❌ 后端服务启动失败"
@@ -99,7 +99,7 @@ echo "========================================="
 echo "🎉 系统启动成功！"
 echo "========================================="
 echo "前端访问: http://localhost:3000"
-echo "后端API: http://localhost:5000"
+echo "后端API: http://localhost:5002"
 echo ""
 echo "按 Ctrl+C 停止服务"
 echo "========================================="
