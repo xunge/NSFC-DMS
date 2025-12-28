@@ -2,13 +2,13 @@
   <div class="query" style="height: 100%; overflow-y: auto;">
     <div class="container" style="min-height: 100%;">
       <h2 class="page-title">项目查询</h2>
-      
+
       <div class="card mb-20">
         <h3>获取项目信息</h3>
         <p style="color: #909399; margin-bottom: 16px; font-size: 14px;">
           从 <el-link type="primary" href="https://kd.nsfc.cn/" target="_blank">kd.nsfc.cn</el-link> 获取项目详情链接，输入URL提取项目信息
         </p>
-        
+
         <el-form :model="fetchForm" :rules="fetchRules" ref="fetchForm" label-position="top">
           <el-form-item label="项目详情URL" prop="url">
             <el-input
@@ -24,7 +24,41 @@
               </template>
             </el-input>
           </el-form-item>
+          <el-form-item>
+            <el-checkbox v-model="fetchForm.autoDownload" :disabled="loading">
+              自动下载结题报告PDF（耗时较长，建议勾选）
+            </el-checkbox>
+            <span style="color: #909399; font-size: 12px; margin-left: 12px;">
+              下载过程可能需要几分钟，请耐心等待
+            </span>
+          </el-form-item>
         </el-form>
+
+        <!-- 下载进度显示 -->
+        <div v-if="downloadProgress.show" class="download-progress mt-20">
+          <el-alert
+            :title="downloadProgress.title"
+            :type="downloadProgress.type"
+            :closable="false"
+          >
+            <div style="margin-top: 8px;">
+              <el-progress
+                :percentage="downloadProgress.percentage"
+                :status="downloadProgress.status"
+                :text-inside="true"
+                :stroke-width="20"
+              />
+              <div style="margin-top: 4px; font-size: 12px; color: #606266;">
+                {{ downloadProgress.message }}
+              </div>
+              <div style="margin-top: 8px; font-size: 11px; color: #909399; line-height: 1.5;">
+                💡 提示：进度已实时推送，后端控制台会显示详细日志<br>
+                下载过程：初始化 → 获取图片链接 → 下载图片 → 合成PDF<br>
+                如需查看详细日志，请确保后端服务在终端中运行
+              </div>
+            </div>
+          </el-alert>
+        </div>
 
         <div v-if="fetchedData" class="mt-20">
           <el-alert
@@ -56,9 +90,38 @@
             <div class="code-block">{{ fetchedData.conclusion_abstract }}</div>
           </div>
 
+          <!-- 结题报告下载结果 -->
+          <div v-if="reportResult.show" class="mt-20">
+            <el-alert
+              :title="reportResult.title"
+              :type="reportResult.type"
+              :closable="false"
+            >
+              <div v-if="reportResult.success" style="margin-top: 8px;">
+                <div>文件名: {{ reportResult.filename }}</div>
+                <div>页数: {{ reportResult.page_count }} 页</div>
+                <div style="margin-top: 8px;">
+                  <el-button size="small" type="primary" @click="viewReport(reportResult.report_id)">
+                    在线预览
+                  </el-button>
+                  <el-button size="small" @click="downloadReport(reportResult.report_id)">
+                    下载PDF
+                  </el-button>
+                </div>
+              </div>
+              <div v-else style="margin-top: 8px;">
+                {{ reportResult.message }}
+              </div>
+            </el-alert>
+          </div>
+
           <div class="mt-20">
             <el-button type="primary" @click="saveToDatabase">保存到数据库</el-button>
-            <el-button @click="fetchedData = null">清空</el-button>
+            <el-button @click="resetForm">清空</el-button>
+            <el-button v-if="fetchedData && !reportResult.success"
+                       type="success" @click="downloadReportSeparately" :loading="downloadSeparateLoading">
+              {{ downloadSeparateLoading ? '下载中...' : '下载结题报告' }}
+            </el-button>
           </div>
         </div>
       </div>
@@ -73,6 +136,7 @@
                   v-model="searchForm.unit"
                   placeholder="输入机构名称（支持模糊查询）"
                   clearable
+                  :disabled="searchLoading"
                   @keyup.enter="handleSearch"
                 />
               </el-form-item>
@@ -83,18 +147,19 @@
                   v-model="searchForm.code"
                   placeholder="输入申请代码（如：F0205）"
                   clearable
+                  :disabled="searchLoading"
                   @keyup.enter="handleSearch"
                 />
               </el-form-item>
             </el-col>
           </el-row>
-          
+
           <div class="search-actions">
             <el-button type="primary" @click="handleSearch" :loading="searchLoading">
               {{ searchLoading ? '查询中...' : '查询' }}
             </el-button>
-            <el-button @click="resetSearch">重置</el-button>
-            <el-button type="success" @click="exportResults" :disabled="searchResults.length === 0">
+            <el-button @click="resetSearch" :disabled="searchLoading">重置</el-button>
+            <el-button type="success" @click="exportResults" :disabled="searchResults.length === 0 || searchLoading">
               导出CSV
             </el-button>
           </div>
@@ -104,7 +169,7 @@
           <div class="search-header">
             <h4>查询结果 ({{ pagination.total }} 条)</h4>
           </div>
-          
+
           <el-table
             :data="searchResults"
             stripe
@@ -159,21 +224,47 @@ export default {
   data() {
     return {
       fetchForm: {
-        url: ''
+        url: '',
+        autoDownload: false
       },
       fetchRules: {
         url: [
           { required: true, message: '请输入项目详情URL', trigger: 'blur' },
-          { 
+          {
             pattern: /^https?:\/\/kd\.nsfc\.cn\/finalDetails\?id=.+$/,
-            message: '请输入有效的kd.nsfc.cn项目链接', 
-            trigger: 'blur' 
+            message: '请输入有效的kd.nsfc.cn项目链接',
+            trigger: 'blur'
           }
         ]
       },
       loading: false,
       fetchedData: null,
-      
+
+      // 下载进度
+      downloadProgress: {
+        show: false,
+        percentage: 0,
+        message: '',
+        title: '正在下载结题报告...',
+        type: 'info',
+        status: undefined
+      },
+
+      // 报告下载结果
+      reportResult: {
+        show: false,
+        success: false,
+        title: '',
+        type: 'info',
+        filename: '',
+        page_count: 0,
+        report_id: '',
+        message: ''
+      },
+
+      // 单独下载状态
+      downloadSeparateLoading: false,
+
       searchForm: {
         unit: '',
         code: ''
@@ -194,19 +285,244 @@ export default {
       try {
         await this.$refs.fetchForm.validate()
         this.loading = true
-        
-        const res = await api.fetchProject(this.fetchForm.url)
-        
+
+        // 重置状态
+        this.resetDownloadStatus()
+
+        // 如果需要下载，显示进度条
+        if (this.fetchForm.autoDownload) {
+          this.downloadProgress.show = true
+          this.downloadProgress.percentage = 5
+          this.downloadProgress.message = '开始获取项目信息...'
+          this.downloadProgress.type = 'info'
+          this.downloadProgress.status = undefined
+        }
+
+        const res = await api.fetchProject(this.fetchForm.url, this.fetchForm.autoDownload)
+
         if (res.success && res.data) {
           this.fetchedData = res.data
           ElMessage.success('项目信息获取成功')
+
+          // 处理结题报告下载
+          if (this.fetchForm.autoDownload && res.need_download_report) {
+            // 开始下载结题报告
+            await this.downloadReportForProject(res.project_id)
+          } else {
+            // 不需要下载，隐藏进度条
+            this.downloadProgress.show = false
+          }
         } else {
           ElMessage.error(res.error || '获取失败')
+          this.downloadProgress.show = false
         }
       } catch (error) {
         ElMessage.error(error.message || '获取失败')
+        this.downloadProgress.show = false
       } finally {
         this.loading = false
+      }
+    },
+
+    async downloadReportForProject(projectId) {
+      // 使用 SSE 实时获取进度
+      this.downloadProgress.percentage = 0
+      this.downloadProgress.message = '正在连接服务器...'
+
+      try {
+        // 创建 SSE 连接 - 使用完整URL
+        const eventSource = new EventSource(`/api/projects/${projectId}/download-report`)
+
+        return new Promise((resolve, reject) => {
+          let completed = false
+
+          // SSE 使用 message 事件接收所有数据
+          eventSource.addEventListener('message', (event) => {
+            if (completed) return
+
+            try {
+              const data = JSON.parse(event.data)
+              console.log('SSE received:', data) // 调试日志
+
+              if (data.type === 'start') {
+                this.downloadProgress.percentage = 5
+                this.downloadProgress.message = data.message
+              } else if (data.type === 'progress') {
+                this.downloadProgress.percentage = data.progress
+                this.downloadProgress.message = data.message
+              } else if (data.type === 'complete') {
+                completed = true
+                eventSource.close()
+
+                this.downloadProgress.percentage = 100
+                this.downloadProgress.message = data.message
+                this.downloadProgress.type = 'success'
+                this.downloadProgress.status = 'success'
+
+                // 显示报告结果
+                this.reportResult = {
+                  show: true,
+                  success: true,
+                  title: '结题报告下载成功！',
+                  type: 'success',
+                  filename: data.filename,
+                  page_count: data.page_count,
+                  report_id: data.report_id,
+                  message: data.message
+                }
+                ElMessage.success('结题报告下载成功')
+                resolve(data)
+              } else if (data.type === 'error') {
+                completed = true
+                eventSource.close()
+
+                this.downloadProgress.percentage = 100
+                this.downloadProgress.message = data.message
+                this.downloadProgress.type = 'warning'
+                this.downloadProgress.status = 'exception'
+
+                this.reportResult = {
+                  show: true,
+                  success: false,
+                  title: '结题报告下载失败',
+                  type: 'warning',
+                  message: data.message
+                }
+                ElMessage.error(data.message || '下载失败')
+                reject(new Error(data.message))
+              }
+            } catch (parseError) {
+              console.error('SSE 数据解析错误:', parseError)
+            }
+          })
+
+          // SSE 连接错误处理
+          eventSource.addEventListener('error', (error) => {
+            if (completed) return
+            console.error('SSE 连接错误:', error)
+            eventSource.close()
+
+            // 如果连接失败，回退到简单版本
+            this.downloadReportSimple(projectId).then(resolve).catch(reject)
+          })
+
+          // 设置超时保护 - 5分钟后自动回退
+          setTimeout(() => {
+            if (!completed) {
+              console.log('SSE 超时，回退到简单版本')
+              eventSource.close()
+              this.downloadReportSimple(projectId).then(resolve).catch(reject)
+            }
+          }, 300000)
+
+          // 浏览器关闭时清理连接
+          window.addEventListener('beforeunload', () => {
+            if (!completed) {
+              eventSource.close()
+            }
+          })
+        })
+      } catch (error) {
+        // 如果 SSE 失败，回退到简单版本
+        console.log('SSE 连接失败，使用简单版本:', error.message)
+        return this.downloadReportSimple(projectId)
+      }
+    },
+
+    async downloadReportSimple(projectId) {
+      // 简单版本：不使用 SSE，只返回最终结果
+      this.downloadProgress.percentage = 10
+      this.downloadProgress.message = '开始下载结题报告...'
+
+      const progressInterval = setInterval(() => {
+        if (this.downloadProgress.percentage < 90) {
+          this.downloadProgress.percentage += 5
+          this.downloadProgress.message = '正在下载中，请耐心等待（可能需要几分钟）...'
+        }
+      }, 2000)
+
+      try {
+        const res = await api.downloadProjectReportSimple(projectId)
+
+        clearInterval(progressInterval)
+
+        if (res.success) {
+          this.downloadProgress.percentage = 100
+          this.downloadProgress.message = res.message
+          this.downloadProgress.type = 'success'
+          this.downloadProgress.status = 'success'
+
+          // 显示报告结果
+          this.reportResult = {
+            show: true,
+            success: true,
+            title: '结题报告下载成功！',
+            type: 'success',
+            filename: res.filename,
+            page_count: res.page_count,
+            report_id: res.report_id,
+            message: res.message
+          }
+          ElMessage.success('结题报告下载成功')
+        } else {
+          throw new Error(res.error || '下载失败')
+        }
+      } catch (error) {
+        clearInterval(progressInterval)
+
+        this.downloadProgress.percentage = 100
+        this.downloadProgress.message = error.message
+        this.downloadProgress.type = 'warning'
+        this.downloadProgress.status = 'exception'
+
+        this.reportResult = {
+          show: true,
+          success: false,
+          title: '结题报告下载失败',
+          type: 'warning',
+          message: error.message
+        }
+        ElMessage.error(error.message || '下载失败')
+      }
+    },
+
+    async downloadReportSeparately() {
+      if (!this.fetchedData) return
+
+      try {
+        this.downloadSeparateLoading = true
+
+        // 首先需要保存项目到数据库才能下载
+        let projectId = null
+
+        // 检查项目是否已存在
+        const checkRes = await api.getProjects({ unit: '' })
+        const existing = checkRes.data.find(p =>
+          p.approval_number === this.fetchedData.approval_number
+        )
+
+        if (existing) {
+          projectId = existing.id
+        } else {
+          // 保存项目
+          const saveRes = await api.createProject(this.fetchedData)
+          projectId = saveRes.project_id
+        }
+
+        // 显示进度
+        this.downloadProgress.show = true
+        this.downloadProgress.percentage = 10
+        this.downloadProgress.message = '开始下载结题报告...'
+        this.downloadProgress.type = 'info'
+        this.downloadProgress.status = undefined
+
+        // 调用下载方法
+        await this.downloadReportForProject(projectId)
+
+      } catch (error) {
+        ElMessage.error(error.message || '下载失败')
+      } finally {
+        this.downloadSeparateLoading = false
       }
     },
 
@@ -214,9 +530,9 @@ export default {
       if (!this.fetchedData) return
 
       try {
-        // 检查是否已存在 - 查询所有项目，然后根据批准号过滤
-        const checkRes = await api.getProjects({ unit: '' }) // 查询所有项目
-        const exists = checkRes.data.some(p => 
+        // 检查是否已存在
+        const checkRes = await api.getProjects({ unit: '' })
+        const exists = checkRes.data.some(p =>
           p.approval_number === this.fetchedData.approval_number
         )
 
@@ -226,9 +542,9 @@ export default {
             '提示',
             { type: 'warning' }
           )
-          
+
           if (confirm === 'confirm') {
-            const existing = checkRes.data.find(p => 
+            const existing = checkRes.data.find(p =>
               p.approval_number === this.fetchedData.approval_number
             )
             await api.updateProject(existing.id, this.fetchedData)
@@ -241,10 +557,72 @@ export default {
 
         this.fetchedData = null
         this.fetchForm.url = ''
+        this.fetchForm.autoDownload = false
+        this.resetDownloadStatus()
       } catch (error) {
         if (error.message !== 'cancel') {
           ElMessage.error(error.message || '保存失败')
         }
+      }
+    },
+
+    async viewReport(reportId) {
+      try {
+        const res = await api.viewReport(reportId)
+        if (res.success) {
+          // 打开新窗口预览
+          const url = `/api/pdf/preview/${reportId}`
+          window.open(url, '_blank')
+        } else {
+          ElMessage.error(res.error || '预览失败')
+        }
+      } catch (error) {
+        ElMessage.error(error.message || '预览失败')
+      }
+    },
+
+    async downloadReport(reportId) {
+      try {
+        const res = await api.downloadReport(reportId)
+        const url = window.URL.createObjectURL(new Blob([res], { type: 'application/pdf' }))
+        const link = document.createElement('a')
+        link.href = url
+        link.download = this.reportResult.filename
+        link.click()
+        window.URL.revokeObjectURL(url)
+        ElMessage.success('下载开始')
+      } catch (error) {
+        ElMessage.error(error.message || '下载失败')
+      }
+    },
+
+    resetDownloadStatus() {
+      this.downloadProgress = {
+        show: false,
+        percentage: 0,
+        message: '',
+        title: '正在下载结题报告...',
+        type: 'info',
+        status: undefined
+      }
+      this.reportResult = {
+        show: false,
+        success: false,
+        title: '',
+        type: 'info',
+        filename: '',
+        page_count: 0,
+        report_id: '',
+        message: ''
+      }
+    },
+
+    resetForm() {
+      this.fetchForm = { url: '', autoDownload: false }
+      this.fetchedData = null
+      this.resetDownloadStatus()
+      if (this.$refs.fetchForm) {
+        this.$refs.fetchForm.resetFields()
       }
     },
 
@@ -374,5 +752,26 @@ h4 {
 
 .mb-20 {
   margin-bottom: 20px;
+}
+
+.download-progress {
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.code-block {
+  background-color: #f5f7fa;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  padding: 12px;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #303133;
 }
 </style>

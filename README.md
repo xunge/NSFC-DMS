@@ -18,6 +18,7 @@
 - **URL 导入**: 支持通过项目详情页 URL 快速导入项目数据
 - **自动抓取**: 通过 Selenium + Edge 浏览器自动从 NSFC 官网抓取项目信息
 - **智能解析**: 自动提取项目名称、批准号、负责人、依托单位、资助经费、摘要等关键信息
+- **结题报告下载**: 支持自动下载结题报告 PDF，集成图片下载 + PDF 合成功能，支持进度显示
 
 ### 📊 数据管理
 - **项目管理**: 完整的 CRUD 操作（创建、读取、更新、删除）
@@ -26,6 +27,7 @@
 - **数据导出**: 支持导出项目列表为 CSV 格式（Excel 兼容）
 
 ### 📄 PDF 报告管理
+- **自动下载**: 从 NSFC 官网自动下载结题报告 PDF（图片下载 + 合成）
 - **PDF 上传**: 支持上传结题报告 PDF 文件
 - **智能命名**: 自动生成规范文件名（申请代码_项目名称_批准号.pdf）
 - **内容预览**: 在线提取并显示 PDF 文本内容
@@ -182,8 +184,14 @@ GET /api/projects/<project_id>
 **自动抓取项目**
 ```
 POST /api/projects/fetch
-Body: { "url": "https://kd.nsfc.gov.cn/..." }
+Body: { "url": "https://kd.nsfc.gov.cn/...", "auto_download": false }
 ```
+
+**下载结题报告**
+```
+POST /api/projects/<project_id>/download-report
+```
+自动从 NSFC 官网下载结题报告 PDF 并保存到数据库。
 
 **创建项目**
 ```

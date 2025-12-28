@@ -37,15 +37,17 @@ api.interceptors.response.use(
 export default {
   // 健康检查
   health: () => api.get('/health'),
-  
+
   // 项目相关
-  fetchProject: (url) => api.post('/projects/fetch', { url }),
+  fetchProject: (url, autoDownload = false) => api.post('/projects/fetch', { url, auto_download: autoDownload }),
   getProjects: (params = {}) => api.get('/projects', { params }),
   getProjectDetail: (id) => api.get(`/projects/${id}`),
   createProject: (data) => api.post('/projects', data),
   updateProject: (id, data) => api.put(`/projects/${id}`, data),
   deleteProject: (id) => api.delete(`/projects/${id}`),
-  
+  downloadProjectReport: (projectId) => api.post(`/projects/${projectId}/download-report`),
+  downloadProjectReportSimple: (projectId) => api.post(`/projects/${projectId}/download-report-simple`),
+
   // PDF 相关
   uploadReport: (formData) => api.post('/reports/upload', formData, {
     headers: {
@@ -57,13 +59,13 @@ export default {
     responseType: 'blob'
   }),
   deleteReport: (id) => api.delete(`/reports/${id}`),
-  
+
   // 搜索历史
   getSearchHistory: (limit = 10) => api.get('/search/history', { params: { limit } }),
   clearSearchHistory: () => api.delete('/search/history'),
-  
+
   // 导出
-  exportProjects: (params = {}) => api.get('/export/projects', { 
+  exportProjects: (params = {}) => api.get('/export/projects', {
     params,
     responseType: 'blob'
   })
