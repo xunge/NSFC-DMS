@@ -7,6 +7,8 @@ import time
 import uuid
 import logging
 import json
+import queue
+import threading
 from datetime import datetime
 from werkzeug.utils import secure_filename
 try:
@@ -141,20 +143,61 @@ def register_routes(app: Flask):
                 yield f"data: {json.dumps({'type': 'start', 'message': '开始下载结题报告...'})}\n\n"
                 logger.info(f"开始下载结题报告: {project_id}, nsfc_id: {nsfc_id}, 项目名称: {project_name}")
 
+                # 使用队列来收集进度消息
+                progress_queue = queue.Queue()
+
                 # 定义进度回调函数
-                def progress_callback(progress, message):
-                    # 发送进度事件
-                    event_data = json.dumps({
+                def progress_callback(progress, message, current_page=0, collected_pages=0):
+                    # 将进度事件放入队列
+                    event_data = {
                         'type': 'progress',
                         'progress': progress,
-                        'message': message
-                    })
-                    yield f"data: {event_data}\n\n"
-                    logger.info(f"[下载进度] {progress}% - {message}")
+                        'message': message,
+                        'current_page': current_page,
+                        'collected_pages': collected_pages
+                    }
+                    progress_queue.put(event_data)
+                    logger.info(f"[下载进度] {progress}% - {message} (第{current_page}页，已收集{collected_pages}页)")
 
-                # 执行下载 - 使用nsfc_id而不是project_id
-                downloader = NsfcReportDownloader()
-                result = downloader.download_report(nsfc_id, project_name, progress_callback)
+                # 在单独的线程中执行下载
+                download_result = {'result': None, 'exception': None}
+                
+                def download_thread():
+                    try:
+                        downloader = NsfcReportDownloader()
+                        result = downloader.download_report(nsfc_id, project_name, progress_callback)
+                        download_result['result'] = result
+                    except Exception as e:
+                        download_result['exception'] = e
+
+                thread = threading.Thread(target=download_thread)
+                thread.start()
+
+                # 持续发送进度消息，直到下载完成
+                while thread.is_alive():
+                    try:
+                        # 从队列中获取进度消息（超时0.1秒）
+                        event_data = progress_queue.get(timeout=0.1)
+                        yield f"data: {json.dumps(event_data)}\n\n"
+                    except queue.Empty:
+                        # 队列为空，继续等待
+                        continue
+
+                # 等待下载线程完成
+                thread.join()
+                
+                # 发送队列中剩余的所有消息
+                while not progress_queue.empty():
+                    try:
+                        event_data = progress_queue.get_nowait()
+                        yield f"data: {json.dumps(event_data)}\n\n"
+                    except queue.Empty:
+                        break
+                
+                result = download_result['result']
+                
+                if download_result['exception']:
+                    raise download_result['exception']
 
                 if result['success']:
                     # 保存到数据库
@@ -233,8 +276,8 @@ def register_routes(app: Flask):
         conn.close()
 
         # 定义进度回调函数，实时记录日志
-        def progress_callback(progress, message):
-            logger.info(f"[下载进度] {progress}% - {message}")
+        def progress_callback(progress, message, current_page=0, collected_pages=0):
+            logger.info(f"[下载进度] {progress}% - {message} (第{current_page}页，已收集{collected_pages}页)")
 
         try:
             logger.info(f"开始下载结题报告: {project_id}, nsfc_id: {nsfc_id}, 项目名称: {project_name}")

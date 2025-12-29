@@ -125,7 +125,7 @@ class NsfcReportDownloader:
         try:
             # 初始化会话
             if progress_callback:
-                progress_callback(5, "初始化会话...")
+                progress_callback(5, "初始化会话...", 0, 0)
             self.init_session()
 
             # 净化文件名
@@ -138,10 +138,14 @@ class NsfcReportDownloader:
             consecutive_failures = 0
 
             if progress_callback:
-                progress_callback(10, f"开始下载项目: {safe_name}")
+                progress_callback(10, f"开始下载项目: {safe_name}", 0, 0)
 
             while True:
                 logger.info(f"========== 开始处理第 {index} 页 ==========")
+                
+                # 通知开始处理当前页
+                if progress_callback:
+                    progress_callback(10 + (index * 80 // 100), f"开始处理第 {index} 页...", index, len(images))
 
                 # 步骤1: 获取图片链接
                 img_url = None
@@ -162,12 +166,12 @@ class NsfcReportDownloader:
                 if not img_url:
                     logger.info(f"[循环] 第 {index} 页 API 返回空，判断为下载结束")
                     if progress_callback:
-                        progress_callback(95, f"第 {index} 页 API 返回空，判断为下载结束")
+                        progress_callback(95, f"第 {index} 页 API 返回空，判断为下载结束", index, len(images))
                     break
 
                 # 步骤2: 下载图片内容
                 if progress_callback:
-                    progress_callback(10 + (index * 80 // 100), f"正在处理第 {index} 页...")
+                    progress_callback(10 + (index * 80 // 100), f"正在下载第 {index} 页...", index, len(images))
 
                 content = None
                 dl_retry = 0
@@ -180,7 +184,7 @@ class NsfcReportDownloader:
                     if content == "404":
                         logger.info(f"[循环] 第 {index} 页图片返回404，结束下载")
                         if progress_callback:
-                            progress_callback(95, f"第 {index} 页图片返回 404，下载结束")
+                            progress_callback(95, f"第 {index} 页图片返回 404，下载结束", index, len(images))
                         img_url = None
                         break
 
@@ -193,7 +197,7 @@ class NsfcReportDownloader:
                     logger.info(f"[循环] 第 {index} 页下载失败，等待 {sleep_time}秒后重试")
                     if progress_callback:
                         progress_callback(10 + (index * 80 // 100),
-                                         f"第 {index} 页下载失败，第 {dl_retry} 次重试 (等待{sleep_time}s)...")
+                                         f"第 {index} 页下载失败，第 {dl_retry} 次重试 (等待{sleep_time}s)...", index, len(images))
                     time.sleep(sleep_time)
 
                 if img_url is None:
@@ -205,7 +209,7 @@ class NsfcReportDownloader:
                     consecutive_failures += 1
                     if consecutive_failures >= 3:
                         if progress_callback:
-                            progress_callback(100, "连续3页下载失败，可能IP被封或网络中断")
+                            progress_callback(100, "连续3页下载失败，可能IP被封或网络中断", index, len(images))
                         break
                     index += 1
                     continue
@@ -219,6 +223,9 @@ class NsfcReportDownloader:
                         img = img.convert("RGB")
                     images.append(img)
                     logger.info(f"[图片] 第 {index} 页图片处理成功，当前已收集 {len(images)} 张图片")
+                    # 通知图片处理成功
+                    if progress_callback:
+                        progress_callback(10 + (index * 80 // 100), f"第 {index} 页处理成功，已收集 {len(images)} 张图片", index, len(images))
                 except Exception as e:
                     logger.error(f"图片损坏: {e}")
 
@@ -232,7 +239,7 @@ class NsfcReportDownloader:
             if images:
                 logger.info(f"[PDF] 开始合成PDF，共 {len(images)} 页")
                 if progress_callback:
-                    progress_callback(98, "正在合成PDF...")
+                    progress_callback(98, f"正在合成PDF，共 {len(images)} 页...", len(images), len(images))
 
                 # 生成文件名
                 timestamp = int(time.time())
@@ -249,7 +256,7 @@ class NsfcReportDownloader:
                 logger.info(f"[PDF] PDF合成完成")
 
                 if progress_callback:
-                    progress_callback(100, f"成功！共 {len(images)} 页")
+                    progress_callback(100, f"成功！共 {len(images)} 页", len(images), len(images))
 
                 return {
                     'success': True,
@@ -261,7 +268,7 @@ class NsfcReportDownloader:
             else:
                 logger.warning(f"[PDF] 没有图片，无法生成PDF")
                 if progress_callback:
-                    progress_callback(100, "未能下载任何有效图片")
+                    progress_callback(100, "未能下载任何有效图片", 0, 0)
                 return {
                     'success': False,
                     'message': "未能下载任何有效图片"
@@ -270,7 +277,7 @@ class NsfcReportDownloader:
         except Exception as e:
             logger.error(f"下载结题报告失败: {str(e)}")
             if progress_callback:
-                progress_callback(100, f"下载失败: {str(e)}")
+                progress_callback(100, f"下载失败: {str(e)}", 0, 0)
             return {
                 'success': False,
                 'message': f"下载失败: {str(e)}"

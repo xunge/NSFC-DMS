@@ -26,11 +26,11 @@
           </el-form-item>
           <el-form-item>
             <el-checkbox v-model="fetchForm.autoDownload" :disabled="loading">
-              自动下载结题报告PDF（耗时较长，建议勾选）
+              自动下载结题报告PDF（耗时较长）
             </el-checkbox>
-            <span style="color: #909399; font-size: 12px; margin-left: 12px;">
+            <!-- <span style="color: #909399; font-size: 12px; margin-left: 12px;">
               下载过程可能需要几分钟，请耐心等待
-            </span>
+            </span> -->
           </el-form-item>
         </el-form>
 
@@ -42,20 +42,21 @@
             :closable="false"
           >
             <div style="margin-top: 8px;">
-              <el-progress
-                :percentage="downloadProgress.percentage"
-                :status="downloadProgress.status"
-                :text-inside="true"
-                :stroke-width="20"
-              />
-              <div style="margin-top: 4px; font-size: 12px; color: #606266;">
+              <!-- <div style="font-size: 13px; color: #606266; line-height: 1.6;">
                 {{ downloadProgress.message }}
+              </div> -->
+              <div v-if="downloadProgress.current_page > 0" style="margin-top: 12px; padding: 8px; background-color: #f0f9ff; border-radius: 4px; border-left: 3px solid #409eff;">
+                <!-- <div style="font-size: 13px; color: #303133; font-weight: 500;">
+                  📄 当前处理：第 {{ downloadProgress.current_page }} 页
+                </div> -->
+                <!-- <div v-if="downloadProgress.collected_pages > 0" style="font-size: 12px; color: #606266; margin-top: 4px;">
+                  已成功收集：{{ downloadProgress.collected_pages }} 页
+                </div> -->
               </div>
-              <div style="margin-top: 8px; font-size: 11px; color: #909399; line-height: 1.5;">
-                💡 提示：进度已实时推送，后端控制台会显示详细日志<br>
-                下载过程：初始化 → 获取图片链接 → 下载图片 → 合成PDF<br>
+              <!-- <div style="margin-top: 8px; font-size: 11px; color: #909399; line-height: 1.5;">
+                💡 提示：下载过程实时更新，后端控制台会显示详细日志<br>
                 如需查看详细日志，请确保后端服务在终端中运行
-              </div>
+              </div> -->
             </div>
           </el-alert>
         </div>
@@ -225,7 +226,7 @@ export default {
     return {
       fetchForm: {
         url: '',
-        autoDownload: false
+        autoDownload: true
       },
       fetchRules: {
         url: [
@@ -243,11 +244,11 @@ export default {
       // 下载进度
       downloadProgress: {
         show: false,
-        percentage: 0,
         message: '',
         title: '正在下载结题报告...',
         type: 'info',
-        status: undefined
+        current_page: 0,
+        collected_pages: 0
       },
 
       // 报告下载结果
@@ -289,13 +290,11 @@ export default {
         // 重置状态
         this.resetDownloadStatus()
 
-        // 如果需要下载，显示进度条
+        // 如果需要下载，显示进度信息
         if (this.fetchForm.autoDownload) {
           this.downloadProgress.show = true
-          this.downloadProgress.percentage = 5
           this.downloadProgress.message = '开始获取项目信息...'
           this.downloadProgress.type = 'info'
-          this.downloadProgress.status = undefined
         }
 
         const res = await api.fetchProject(this.fetchForm.url, this.fetchForm.autoDownload)
@@ -326,8 +325,9 @@ export default {
 
     async downloadReportForProject(projectId) {
       // 使用 SSE 实时获取进度
-      this.downloadProgress.percentage = 0
+      this.downloadProgress.title = '正在下载结题报告...'
       this.downloadProgress.message = '正在连接服务器...'
+      this.downloadProgress.type = 'info'
 
       try {
         // 创建 SSE 连接 - 使用完整URL
@@ -345,19 +345,40 @@ export default {
               console.log('SSE received:', data) // 调试日志
 
               if (data.type === 'start') {
-                this.downloadProgress.percentage = 5
+                this.downloadProgress.title = '开始下载结题报告...'
                 this.downloadProgress.message = data.message
+                this.downloadProgress.current_page = 0
+                this.downloadProgress.collected_pages = 0
               } else if (data.type === 'progress') {
-                this.downloadProgress.percentage = data.progress
-                this.downloadProgress.message = data.message
+                // 更新进度信息
+                const message = data.message
+                const currentPage = data.current_page || 0
+                const collectedPages = data.collected_pages || 0
+                
+                // 更新页码信息
+                this.downloadProgress.current_page = currentPage
+                this.downloadProgress.collected_pages = collectedPages
+                
+                // 更新标题和消息
+                if (currentPage > 0) {
+                  this.downloadProgress.title = `正在处理第 ${currentPage} 页...`
+                } else {
+                  // 从消息中提取页码信息作为备选
+                  const pageMatch = message.match(/第\s*(\d+)\s*页/)
+                  if (pageMatch) {
+                    this.downloadProgress.title = `正在下载第 ${pageMatch[1]} 页...`
+                  } else {
+                    this.downloadProgress.title = '正在下载结题报告...'
+                  }
+                }
+                this.downloadProgress.message = message
               } else if (data.type === 'complete') {
                 completed = true
                 eventSource.close()
 
-                this.downloadProgress.percentage = 100
+                this.downloadProgress.title = '下载完成！'
                 this.downloadProgress.message = data.message
                 this.downloadProgress.type = 'success'
-                this.downloadProgress.status = 'success'
 
                 // 显示报告结果
                 this.reportResult = {
@@ -376,10 +397,9 @@ export default {
                 completed = true
                 eventSource.close()
 
-                this.downloadProgress.percentage = 100
+                this.downloadProgress.title = '下载失败'
                 this.downloadProgress.message = data.message
                 this.downloadProgress.type = 'warning'
-                this.downloadProgress.status = 'exception'
 
                 this.reportResult = {
                   show: true,
@@ -402,18 +422,43 @@ export default {
             console.error('SSE 连接错误:', error)
             eventSource.close()
 
-            // 如果连接失败，回退到简单版本
-            this.downloadReportSimple(projectId).then(resolve).catch(reject)
+            // 连接失败，显示错误
+            this.downloadProgress.title = '连接失败'
+            this.downloadProgress.message = '无法连接到服务器，请检查网络连接或稍后重试'
+            this.downloadProgress.type = 'warning'
+            
+            this.reportResult = {
+              show: true,
+              success: false,
+              title: '结题报告下载失败',
+              type: 'warning',
+              message: '无法连接到服务器，请检查网络连接或稍后重试'
+            }
+            ElMessage.error('无法连接到服务器，请检查网络连接或稍后重试')
+            reject(new Error('SSE 连接失败'))
           })
 
-          // 设置超时保护 - 5分钟后自动回退
+          // 设置超时保护 - 5分钟后自动关闭
           setTimeout(() => {
             if (!completed) {
-              console.log('SSE 超时，回退到简单版本')
+              console.log('SSE 超时')
               eventSource.close()
-              this.downloadReportSimple(projectId).then(resolve).catch(reject)
+              
+              this.downloadProgress.title = '下载超时'
+              this.downloadProgress.message = '下载时间过长，请检查网络连接或稍后重试'
+              this.downloadProgress.type = 'warning'
+              
+              this.reportResult = {
+                show: true,
+                success: false,
+                title: '结题报告下载超时',
+                type: 'warning',
+                message: '下载时间过长，请检查网络连接或稍后重试'
+              }
+              ElMessage.error('下载超时，请检查网络连接或稍后重试')
+              reject(new Error('下载超时'))
             }
-          }, 300000)
+          }, 3000000)
 
           // 浏览器关闭时清理连接
           window.addEventListener('beforeunload', () => {
@@ -423,66 +468,21 @@ export default {
           })
         })
       } catch (error) {
-        // 如果 SSE 失败，回退到简单版本
-        console.log('SSE 连接失败，使用简单版本:', error.message)
-        return this.downloadReportSimple(projectId)
-      }
-    },
-
-    async downloadReportSimple(projectId) {
-      // 简单版本：不使用 SSE，只返回最终结果
-      this.downloadProgress.percentage = 10
-      this.downloadProgress.message = '开始下载结题报告...'
-
-      const progressInterval = setInterval(() => {
-        if (this.downloadProgress.percentage < 90) {
-          this.downloadProgress.percentage += 5
-          this.downloadProgress.message = '正在下载中，请耐心等待（可能需要几分钟）...'
-        }
-      }, 2000)
-
-      try {
-        const res = await api.downloadProjectReportSimple(projectId)
-
-        clearInterval(progressInterval)
-
-        if (res.success) {
-          this.downloadProgress.percentage = 100
-          this.downloadProgress.message = res.message
-          this.downloadProgress.type = 'success'
-          this.downloadProgress.status = 'success'
-
-          // 显示报告结果
-          this.reportResult = {
-            show: true,
-            success: true,
-            title: '结题报告下载成功！',
-            type: 'success',
-            filename: res.filename,
-            page_count: res.page_count,
-            report_id: res.report_id,
-            message: res.message
-          }
-          ElMessage.success('结题报告下载成功')
-        } else {
-          throw new Error(res.error || '下载失败')
-        }
-      } catch (error) {
-        clearInterval(progressInterval)
-
-        this.downloadProgress.percentage = 100
-        this.downloadProgress.message = error.message
+        // 如果 SSE 创建失败，显示错误
+        console.error('SSE 连接失败:', error.message)
+        this.downloadProgress.title = '连接失败'
+        this.downloadProgress.message = '无法创建连接，请检查网络连接或稍后重试'
         this.downloadProgress.type = 'warning'
-        this.downloadProgress.status = 'exception'
-
+        
         this.reportResult = {
           show: true,
           success: false,
           title: '结题报告下载失败',
           type: 'warning',
-          message: error.message
+          message: '无法创建连接，请检查网络连接或稍后重试'
         }
-        ElMessage.error(error.message || '下载失败')
+        ElMessage.error('无法创建连接，请检查网络连接或稍后重试')
+        throw error
       }
     },
 
@@ -509,14 +509,11 @@ export default {
           projectId = saveRes.project_id
         }
 
-        // 显示进度
+        // 重置下载状态，避免重复标题
+        this.resetDownloadStatus()
         this.downloadProgress.show = true
-        this.downloadProgress.percentage = 10
-        this.downloadProgress.message = '开始下载结题报告...'
-        this.downloadProgress.type = 'info'
-        this.downloadProgress.status = undefined
 
-        // 调用下载方法
+        // 调用下载方法（下载方法内部会设置标题和消息）
         await this.downloadReportForProject(projectId)
 
       } catch (error) {
@@ -599,11 +596,11 @@ export default {
     resetDownloadStatus() {
       this.downloadProgress = {
         show: false,
-        percentage: 0,
         message: '',
         title: '正在下载结题报告...',
         type: 'info',
-        status: undefined
+        current_page: 0,
+        collected_pages: 0
       }
       this.reportResult = {
         show: false,
