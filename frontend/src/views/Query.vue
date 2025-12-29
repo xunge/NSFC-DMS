@@ -41,23 +41,23 @@
             :type="downloadProgress.type"
             :closable="false"
           >
-            <div style="margin-top: 8px;">
-              <!-- <div style="font-size: 13px; color: #606266; line-height: 1.6;">
+            <!-- <div style="margin-top: 8px;">
+              <div style="font-size: 13px; color: #606266; line-height: 1.6;">
                 {{ downloadProgress.message }}
-              </div> -->
-              <div v-if="downloadProgress.current_page > 0" style="margin-top: 12px; padding: 8px; background-color: #f0f9ff; border-radius: 4px; border-left: 3px solid #409eff;">
-                <!-- <div style="font-size: 13px; color: #303133; font-weight: 500;">
-                  📄 当前处理：第 {{ downloadProgress.current_page }} 页
-                </div> -->
-                <!-- <div v-if="downloadProgress.collected_pages > 0" style="font-size: 12px; color: #606266; margin-top: 4px;">
-                  已成功收集：{{ downloadProgress.collected_pages }} 页
-                </div> -->
               </div>
-              <!-- <div style="margin-top: 8px; font-size: 11px; color: #909399; line-height: 1.5;">
+              <div v-if="downloadProgress.current_page > 0" style="margin-top: 12px; padding: 8px; background-color: #f0f9ff; border-radius: 4px; border-left: 3px solid #409eff;">
+                <div style="font-size: 13px; color: #303133; font-weight: 500;">
+                  📄 当前处理：第 {{ downloadProgress.current_page }} 页
+                </div>
+                <div v-if="downloadProgress.collected_pages > 0" style="font-size: 12px; color: #606266; margin-top: 4px;">
+                  已成功收集：{{ downloadProgress.collected_pages }} 页
+                </div>
+              </div>
+              <div style="margin-top: 8px; font-size: 11px; color: #909399; line-height: 1.5;">
                 💡 提示：下载过程实时更新，后端控制台会显示详细日志<br>
                 如需查看详细日志，请确保后端服务在终端中运行
-              </div> -->
-            </div>
+              </div>
+            </div> -->
           </el-alert>
         </div>
 
@@ -245,7 +245,7 @@ export default {
       downloadProgress: {
         show: false,
         message: '',
-        title: '正在下载结题报告...',
+        title: '正在提取项目信息...',
         type: 'info',
         current_page: 0,
         collected_pages: 0
