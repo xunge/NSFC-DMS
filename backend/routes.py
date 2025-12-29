@@ -147,17 +147,21 @@ def register_routes(app: Flask):
                 progress_queue = queue.Queue()
 
                 # 定义进度回调函数
-                def progress_callback(progress, message, current_page=0, collected_pages=0):
+                def progress_callback(progress, message, current_page=0, collected_pages=0, total_pages=None):
                     # 将进度事件放入队列
                     event_data = {
                         'type': 'progress',
                         'progress': progress,
                         'message': message,
                         'current_page': current_page,
-                        'collected_pages': collected_pages
+                        'collected_pages': collected_pages,
+                        'total_pages': total_pages
                     }
                     progress_queue.put(event_data)
-                    logger.info(f"[下载进度] {progress}% - {message} (第{current_page}页，已收集{collected_pages}页)")
+                    if total_pages:
+                        logger.info(f"[下载进度] {progress}% - {message} (第{current_page}页，已收集{collected_pages}/{total_pages}页)")
+                    else:
+                        logger.info(f"[下载进度] {progress}% - {message} (第{current_page}页，已收集{collected_pages}页)")
 
                 # 在单独的线程中执行下载
                 download_result = {'result': None, 'exception': None}
@@ -276,8 +280,11 @@ def register_routes(app: Flask):
         conn.close()
 
         # 定义进度回调函数，实时记录日志
-        def progress_callback(progress, message, current_page=0, collected_pages=0):
-            logger.info(f"[下载进度] {progress}% - {message} (第{current_page}页，已收集{collected_pages}页)")
+        def progress_callback(progress, message, current_page=0, collected_pages=0, total_pages=None):
+            if total_pages:
+                logger.info(f"[下载进度] {progress}% - {message} (第{current_page}页，已收集{collected_pages}/{total_pages}页)")
+            else:
+                logger.info(f"[下载进度] {progress}% - {message} (第{current_page}页，已收集{collected_pages}页)")
 
         try:
             logger.info(f"开始下载结题报告: {project_id}, nsfc_id: {nsfc_id}, 项目名称: {project_name}")

@@ -36,29 +36,21 @@
 
         <!-- 下载进度显示 -->
         <div v-if="downloadProgress.show" class="download-progress mt-20">
-          <el-alert
-            :title="downloadProgress.title"
-            :type="downloadProgress.type"
-            :closable="false"
-          >
-            <!-- <div style="margin-top: 8px;">
-              <div style="font-size: 13px; color: #606266; line-height: 1.6;">
-                {{ downloadProgress.message }}
+          <div style="margin-top: 8px;">
+            <div v-if="downloadProgress.current_page > 0 || downloadProgress.total_pages" style="margin-top: 12px; padding: 8px; background-color: #f0f9ff; border-radius: 4px; border-left: 3px solid #409eff;">
+              <div v-if="downloadProgress.collected_pages > 0" style="font-size: 12px; color: #606266; margin-top: 4px;">
+                已成功收集：{{ downloadProgress.collected_pages }} 页
+                <span v-if="downloadProgress.total_pages"> / {{ downloadProgress.total_pages }} 页</span>
               </div>
-              <div v-if="downloadProgress.current_page > 0" style="margin-top: 12px; padding: 8px; background-color: #f0f9ff; border-radius: 4px; border-left: 3px solid #409eff;">
-                <div style="font-size: 13px; color: #303133; font-weight: 500;">
-                  📄 当前处理：第 {{ downloadProgress.current_page }} 页
-                </div>
-                <div v-if="downloadProgress.collected_pages > 0" style="font-size: 12px; color: #606266; margin-top: 4px;">
-                  已成功收集：{{ downloadProgress.collected_pages }} 页
-                </div>
+              <div v-if="downloadProgress.total_pages && downloadProgress.collected_pages > 0" style="margin-top: 8px;">
+                <el-progress 
+                  :percentage="Math.round((downloadProgress.collected_pages / downloadProgress.total_pages) * 100)" 
+                  :stroke-width="8"
+                  :show-text="true"
+                />
               </div>
-              <div style="margin-top: 8px; font-size: 11px; color: #909399; line-height: 1.5;">
-                💡 提示：下载过程实时更新，后端控制台会显示详细日志<br>
-                如需查看详细日志，请确保后端服务在终端中运行
-              </div>
-            </div> -->
-          </el-alert>
+            </div>
+          </div>
         </div>
 
         <div v-if="fetchedData" class="mt-20">
@@ -68,7 +60,7 @@
             :closable="false"
             class="mb-20"
           >
-            项目信息已提取，您可以保存到数据库
+            项目信息已提取并保存到数据库
           </el-alert>
 
           <el-descriptions :column="2" border title="项目信息">
@@ -117,7 +109,6 @@
           </div>
 
           <div class="mt-20">
-            <el-button type="primary" @click="saveToDatabase">保存到数据库</el-button>
             <el-button @click="resetForm">清空</el-button>
             <el-button v-if="fetchedData && !reportResult.success"
                        type="success" @click="downloadReportSeparately" :loading="downloadSeparateLoading">
@@ -248,7 +239,8 @@ export default {
         title: '正在提取项目信息...',
         type: 'info',
         current_page: 0,
-        collected_pages: 0
+        collected_pages: 0,
+        total_pages: null
       },
 
       // 报告下载结果
@@ -349,24 +341,35 @@ export default {
                 this.downloadProgress.message = data.message
                 this.downloadProgress.current_page = 0
                 this.downloadProgress.collected_pages = 0
+                this.downloadProgress.total_pages = null
               } else if (data.type === 'progress') {
                 // 更新进度信息
                 const message = data.message
                 const currentPage = data.current_page || 0
                 const collectedPages = data.collected_pages || 0
+                const totalPages = data.total_pages !== undefined ? data.total_pages : null
                 
                 // 更新页码信息
                 this.downloadProgress.current_page = currentPage
                 this.downloadProgress.collected_pages = collectedPages
+                this.downloadProgress.total_pages = totalPages
                 
                 // 更新标题和消息
                 if (currentPage > 0) {
-                  this.downloadProgress.title = `正在处理第 ${currentPage} 页...`
+                  if (totalPages) {
+                    this.downloadProgress.title = `正在处理第 ${currentPage} / ${totalPages} 页...`
+                  } else {
+                    this.downloadProgress.title = `正在处理第 ${currentPage} 页...`
+                  }
                 } else {
                   // 从消息中提取页码信息作为备选
                   const pageMatch = message.match(/第\s*(\d+)\s*页/)
                   if (pageMatch) {
-                    this.downloadProgress.title = `正在下载第 ${pageMatch[1]} 页...`
+                    if (totalPages) {
+                      this.downloadProgress.title = `正在下载第 ${pageMatch[1]} / ${totalPages} 页...`
+                    } else {
+                      this.downloadProgress.title = `正在下载第 ${pageMatch[1]} 页...`
+                    }
                   } else {
                     this.downloadProgress.title = '正在下载结题报告...'
                   }
@@ -523,46 +526,6 @@ export default {
       }
     },
 
-    async saveToDatabase() {
-      if (!this.fetchedData) return
-
-      try {
-        // 检查是否已存在
-        const checkRes = await api.getProjects({ unit: '' })
-        const exists = checkRes.data.some(p =>
-          p.approval_number === this.fetchedData.approval_number
-        )
-
-        if (exists) {
-          const confirm = await ElMessageBox.confirm(
-            '该批准号的项目已存在，是否覆盖更新？',
-            '提示',
-            { type: 'warning' }
-          )
-
-          if (confirm === 'confirm') {
-            const existing = checkRes.data.find(p =>
-              p.approval_number === this.fetchedData.approval_number
-            )
-            await api.updateProject(existing.id, this.fetchedData)
-            ElMessage.success('项目信息已更新')
-          }
-        } else {
-          await api.createProject(this.fetchedData)
-          ElMessage.success('项目已保存到数据库')
-        }
-
-        this.fetchedData = null
-        this.fetchForm.url = ''
-        this.fetchForm.autoDownload = false
-        this.resetDownloadStatus()
-      } catch (error) {
-        if (error.message !== 'cancel') {
-          ElMessage.error(error.message || '保存失败')
-        }
-      }
-    },
-
     async viewReport(reportId) {
       try {
         const res = await api.viewReport(reportId)
@@ -597,10 +560,11 @@ export default {
       this.downloadProgress = {
         show: false,
         message: '',
-        title: '正在下载结题报告...',
+        title: '正在提取项目信息...',
         type: 'info',
         current_page: 0,
-        collected_pages: 0
+        collected_pages: 0,
+        total_pages: null
       }
       this.reportResult = {
         show: false,
