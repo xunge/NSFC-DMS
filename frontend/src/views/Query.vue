@@ -53,6 +53,31 @@
           </div>
         </div>
 
+        <!-- 结题报告下载结果 -->
+          <div v-if="reportResult.show" class="mt-20">
+            <el-alert
+              :title="reportResult.title"
+              :type="reportResult.type"
+              :closable="false"
+            >
+              <div v-if="reportResult.success" style="margin-top: 8px;">
+                <div>文件名: {{ reportResult.filename }}</div>
+                <div>页数: {{ reportResult.page_count }} 页</div>
+                <div style="margin-top: 8px;">
+                  <el-button size="small" type="primary" @click="viewReport(reportResult.report_id)">
+                    在线预览
+                  </el-button>
+                  <el-button size="small" @click="downloadReport(reportResult.report_id)">
+                    下载PDF
+                  </el-button>
+                </div>
+              </div>
+              <div v-else style="margin-top: 8px;">
+                {{ reportResult.message }}
+              </div>
+            </el-alert>
+          </div>
+
         <div v-if="fetchedData" class="mt-20">
           <el-alert
             title="获取成功！"
@@ -81,31 +106,6 @@
           <div v-if="fetchedData.conclusion_abstract" class="mt-20">
             <h4>结题摘要</h4>
             <div class="code-block">{{ fetchedData.conclusion_abstract }}</div>
-          </div>
-
-          <!-- 结题报告下载结果 -->
-          <div v-if="reportResult.show" class="mt-20">
-            <el-alert
-              :title="reportResult.title"
-              :type="reportResult.type"
-              :closable="false"
-            >
-              <div v-if="reportResult.success" style="margin-top: 8px;">
-                <div>文件名: {{ reportResult.filename }}</div>
-                <div>页数: {{ reportResult.page_count }} 页</div>
-                <div style="margin-top: 8px;">
-                  <el-button size="small" type="primary" @click="viewReport(reportResult.report_id)">
-                    在线预览
-                  </el-button>
-                  <el-button size="small" @click="downloadReport(reportResult.report_id)">
-                    下载PDF
-                  </el-button>
-                </div>
-              </div>
-              <div v-else style="margin-top: 8px;">
-                {{ reportResult.message }}
-              </div>
-            </el-alert>
           </div>
 
           <div class="mt-20">
